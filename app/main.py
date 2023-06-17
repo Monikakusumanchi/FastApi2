@@ -14,12 +14,30 @@ from app.models import Author as ModelAuthor
 import os
 from dotenv import load_dotenv
 
+from google.cloud import bigquery, storage
+from google.oauth2 import service_account
+
+from fastapi.responses import HTMLResponse
+import pandas as pd 
+
 load_dotenv('.env')
+
+key_path = "cloudkarya-internship-1c013aa63f5f.json"
+bigquery_client = bigquery.Client.from_service_account_json(key_path)
+storage_client = storage.Client.from_service_account_json(key_path)
 
 app = FastAPI()
 
+def download_blob(bucket_name, source_file_name, dest_filename):
+    bucket = storage_client.get_bucket(bucket_name)
+    blob = bucket.blob(source_file_name)
+    f = open(dest_filename,'wb')
+    blob.download_to_file(f)
+
 # to avoid csrftokenError
-app.add_middleware(DBSessionMiddleware, db_url=os.environ['DATABASE_URL'])
+# app.add_middleware(DBSessionMiddleware, db_url=os.environ['DATABASE_URL'])
+
+project_id = "cloudkarya-internship"
 
 @app.get("/")
 async def root():
@@ -28,15 +46,23 @@ async def root():
 
 @app.post('/book/', response_model=SchemaBook)
 async def book(book: SchemaBook):
-   db_book = ModelBook(title=book.title, rating=book.rating, author_id = book.author_id)
-   db.session.add(db_book)
-   db.session.commit()
+   query = f"""
+   INSERT INTO {project_id}.Books.books VALUES({book});
+   """
+   db_book = bigquery_client.query(query)
    return db_book
 
-@app.get('/books/')
+
+
+@app.get('/books/',response_class=HTMLResponse)
 async def book():
-   book = db.session.query(ModelBook).all()
-   return book
+   query = f"""
+         SELECT  * FROM {project_id}.Books.books;
+   """
+   df = bigquery_client.query(query).to_dataframe()
+   # df.head()
+   return df.to_html()
+
 
 
 @app.post('/author/', response_model=SchemaAuthor)
@@ -46,10 +72,14 @@ async def author(author:SchemaAuthor):
    db.session.commit()
    return db_author
 
-@app.get('/authors/')
+@app.get('/authors/',response_class=HTMLResponse)
 async def author():
-   author = db.session.query(ModelAuthor).all()
-   return author
+   bucket_name = "monika1"
+   source_file_name = "data/mnist_test.csv"
+   dest_filename = "mnist_data.csv"
+   download_blob(bucket_name, source_file_name, dest_filename)
+   df = pd.read_csv(dest_filename)
+   return df.head().to_html()
 
 
 # To run locally

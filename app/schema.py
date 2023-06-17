@@ -2,9 +2,11 @@
 from pydantic import BaseModel
 
 class Book(BaseModel):
-   title: str
-   rating: int
-   author_id: int
+   book_id: int
+   book_name: str
+   book_author_id: int
+   book_author_name: str
+   
 
    class Config:
        orm_mode = True
